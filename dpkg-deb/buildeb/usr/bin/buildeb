@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-#[[ "$1" != '--example' ]] || { $0 -q --name=${0##*\/} -m bunyon --description 'buildeb - simplified .deb packaging automation script' -d 'bash,dpkg-deb' "$0" ; exit $? ; }
 [[ "$1" != '--example' ]] || { $0 -q --name=${0##*\/} -m bunyon --description 'buildeb - simplified .deb packaging automation script' -d 'bash,dpkg' "$0" ; exit $? ; }
 
 [[ "$1" != +(\-)@([hH])?([eE][lL][pP]) ]] || {
@@ -125,7 +124,6 @@ echo "Description: ${Description:-$PkgName for Debian.}" >> $BuilDir/DEBIAN/cont
 [[ ! -f "${PostInst:-}" ]] || { cp "$PostInst" $BuilDir/DEBIAN/postinst && chmod 755 $BuilDir/DEBIAN/postinst ; }
 
 ## Generate your package:
-#dpkg-deb --build $BuilDir || exit 1
 dpkg --build $BuilDir || exit 1
 
 ## If build was successful, log the build commands
