@@ -1,0 +1,8 @@
+Package: buildeb
+Version: 1.0
+Architecture: all
+Essential: no
+Priority: optional
+Depends: bash, dpkg-deb | dpkg
+Maintainer: bunyon
+Description: buildeb - simplified .deb packaging automation script. ( https://github.com/dumpster-of-things/buildeb )
