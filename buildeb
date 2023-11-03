@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+
+#[[ "$1" != '--example' ]] || { $0 -q --name=${0##*\/} -m bunyon --description 'buildeb - simplified .deb packaging automation script' -d 'bash,dpkg-deb' "$0" ; exit $? ; }
+[[ "$1" != '--example' ]] || { $0 -q --name=${0##*\/} -m bunyon --description 'buildeb - simplified .deb packaging automation script' -d 'bash,dpkg' "$0" ; exit $? ; }
+
+[[ "$1" != +(\-)@([hH])?([eE][lL][pP]) ]] || {
+	cat <<EOF
+--- --- ---
+buildeb - simplified .deb packaging automation script
+--- --- ---
+-h,                     show this information
+ --help
+
+--example               builds an example package for this script.
+
+-q,                     turn on Automation mode
+ --quiet,                (ask no questions)
+ --auto                  (all non-optional parameters must be specified)
+
+--- --- ---
+REQUIRED:
+
+-s, -i,                 path to a source file or directory to be installed.
+ --source[= ],           * multiple invocations are permitted, and you may
+ --include[= ],            also specify a corresponding installation directory
+ --install[= ]             -example: /PATH/TO/SOURCE:INSTALL/PATH
+                         * otherwise, SOURCE will be added to the primary
+                            installation path (usually 'usr/bin/' or 'opt/' )
+                         * these flags are not technically necessary and may be
+                            omitted entirely when supplying SOURCE[:DEST] items.
+
+--- --- ---
+REQUIRED IN AUTOMATION MODE:
+
+-n,                     name of the package
+ --pkg[= ],
+ --name[= ],
+ --package[= ],
+ --program[= ]
+
+--- --- ---
+OPTIONAL:
+
+-o, -w,                 desired build directory
+ --output[= ],           (default is /home/USER/.buildeb)
+ --build-dir[= ]
+
+-d,                    dependencies,sep,by,commas (optional)
+ --depends[= ]
+
+-e,                    yes or no (optional)
+ --essential[= ]
+
+-p,                    required or optional (optional)
+ --priority[= ]
+
+-m,                    your name, and or contact info, and or repo url (optional)
+ --maintainer[= ],
+ --dev[= ]
+
+--info[= ],           brief project description (optional)
+ --description[= ],
+ --about[= ]
+
+--preinst[= ]         path to pre-install script (optional)
+--postinst[= ]        path to post-install script (optional)
+
+EOF
+	exit 0
+}
+
+for ((a=1;a<=$#;a++)); do
+	case "${!a}" in
+	\-[qQ]|\-\-[qQ][uU][iI][eE][tT]|\-\-[aA][uU][tT][oO]) Auto="True" ;;
+	\-[oOwW]|'--output'*|'--build-dir'*) [[ "${!a}" == *\=* ]] || ((++a)) ; BD="${!a##*\=}" ;;
+	\-[nN]|\-\-[nN][aA][mM[eE]*|\-\-[pP][aArR][cCoO][kKgG][aArR][gGaA][eEmM]*) [[ "${!a}" == *\=* ]] || ((++a)) ; PkgName="${!a##*\=}" ;;
+	\-[dD]|\-\-[dD][eE][pP][eE][nN][dD]*) [[ "${!a}" == *\=* ]] || ((++a)) ; Depends="Depends: ${!a##*\=}" ;;
+	\-[eE]|\-\-[eE][sS][sS][eE][nN][tT][iI][aA][lL]*) [[ "${!a}" == *\=* ]] || ((++a)) ; Essential="${##*\=}" ;;
+	-[pP]|\-\-[pP][rR][iI][oO][rR][iI][tT][yY]*) [[ "${!a}" == *\=* ]] || ((++a)) ; Priority="${!a##*\=}" ;;
+	\-[mM]|\-\-[mM][aA][iI][nN][tT][aA][iI][nN]*|\-\-[dD][eE][vV]*) [[ "${!a}" == *\=* ]] || ((++a)) ; Maintainer="${!a##*\=}" ;;
+	\-\-[iI][nN][fF][oO]*|\-\-[dD][eE][sS][cC][rR][iI][pP][tT][iI][oO][nN]*|\-\-[aA][bB][oO][uU][tT]*) [[ "${!a}" == *\=* ]] || ((++a)) ; Description="${!a##*\=}" ;;
+	\-\-[pP][rR][eE][iI][nN][sS][tT]*) [[ "${!a}" == *\=* ]] || ((++a)) ; PreInst="${!a##*\=}" ;;
+	\-\-[pP][oO][sS][tT][iI][nN][sS][tT]*) [[ "${!a}" == *\=* ]] || ((++a)) ; PostInst="${!a##*\=}" ;;
+	\-[iIsS]|\-\-[iIsS][nNoO][cCsSuU][lLtTrR][uUaAcC][dDlLeE]*)  [[ "${!a}" == *\=* ]] || ((++a)) ; Source[${#Source[@]}]="${!a##*\=}" ;;
+	*) [[ -e "${!a}" ]] && Source[${#Source[@]}]="${!a}" || { echo "unrecognized input: '${!a}'" ; exit 1 ; }
+	esac
+done
+
+[[ -n $Source ]] || { echo "No source files specified..." ; exit 1 ; }
+
+## Create the project directory with a "DEBIAN" directory inside
+if [[ "${Auto:-False}" != "True" ]]; then
+	mkdir -p ${BuilDir:=${BD:-${HOME:=/home/${USER:=$(whoami || exit 2)}}/.${0##*\/}}/${PkgName:=$(read -p "Package Name: " PkgName ; [[ -n $PkgName ]] || exit 1 ; echo "${PkgName// /-}")}${Version:=$(read -p "Version: " Version ; [[ -z $Version ]] || echo "_$Version")}${Arch:=$(read -p "Target Architecture: " Arch ; [[ -z $Arch ]] || echo "_${Arch:=all}")}}/DEBIAN || exit 1
+else
+	mkdir -p ${BuilDir:=${BD:-${HOME:=/home/${USER:=$(whoami || exit 2)}}/.${0##*\/}}/${PkgName:=$([[ -n $PkgName ]] || exit 1 ; echo "${PkgName// /-}")}${Version:=$([[ -z $Version ]] || echo "_$Version")}${Arch:=$([[ -z $Arch ]] || echo "_$Arch")}}/DEBIAN || exit 1
+fi
+
+## Copy source files into project root directory at their respective installation paths
+if [[ "${Auto:-False}" != "True" ]]; then
+	mkdir -p ${BuilDir}/${InstDir:=$(read -p "Installation Path (usually 'usr/bin' or 'opt'(no leading '/'s)): " InstDir ; echo "${InstDir:=usr/bin}")}
+else
+	mkdir -p ${BuilDir}/${InstDir:=usr/bin}
+fi
+for ((f=0;f<${#Source[@]};f++)); do
+	if [[ "${Source[f]}" == *?\:?* ]]; then
+		mkdir -p $BuilDir/${Source[f]##*\:}
+		{ [[ -d "${Source[f]%\:*}" ]] && cp -r "${Source[f]%\:*}" $BuilDir/${Source[f]##*\:}/ || cp "${Source[f]%\:*}" $BuilDir/${Source[f]##*\:}/ ; } || exit 1
+	else
+		{ [[ -d "${Source[f]}" ]] && cp -r "${Source[f]}" $BuilDir/$InstDir/ || cp "${Source[f]}" $BuilDir/$InstDir/ ; } || exit 1
+	fi
+done
+
+## Create a control file under DEBIAN/
+echo "Package: $PkgName" > $BuilDir/DEBIAN/control
+echo "Version: ${Version:=1.0}" >> $BuilDir/DEBIAN/control
+echo "Architecture: ${Arch:=all}" >> $BuilDir/DEBIAN/control
+echo "Essential: ${Essential:=no}" >> $BuilDir/DEBIAN/control
+echo "Priority: ${Priority:=optional}" >> $BuilDir/DEBIAN/control
+echo "${Depends:-Depends:}" >> $BuilDir/DEBIAN/control
+echo "Maintainer: ${Maintainer:-$USER}" >> $BuilDir/DEBIAN/control
+echo "Description: ${Description:-$PkgName for Debian.}" >> $BuilDir/DEBIAN/control
+
+## Optionally copy in and set permissions for a "preinst" and/or "postinst" script to be executed before and/or after installation
+[[ ! -f "${PreInst:-}" ]] || { cp "$PreInst" $BuilDir/DEBIAN/preinst && chmod 755 $BuilDir/DEBIAN/preinst ; }
+[[ ! -f "${PostInst:-}" ]] || { cp "$PostInst" $BuilDir/DEBIAN/postinst && chmod 755 $BuilDir/DEBIAN/postinst ; }
+
+## Generate your package:
+#dpkg-deb --build $BuilDir || exit 1
+dpkg --build $BuilDir || exit 1
+
+## If build was successful, log the build commands
+echo "[$(date +'%Y%m%d%H%M%S')] ${0##*\/} ${@}" >> $BuilDir/../$PkgName.${0##*\/}-log
